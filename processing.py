@@ -3,12 +3,13 @@ import pandas as pd
 from pandas import DataFrame
 from pandas import concat
 
+
 def read_data():
     base_credito = pd.read_excel("data/base_hogares.xlsx")
 
     # Set data as index
     base_credito['fecha'] = pd.to_datetime(base_credito['fecha'], format='%Y-%m-%d').dt.date
-    base_credito= base_credito.set_index('fecha')
+    base_credito = base_credito.set_index('fecha')
 
     # Split data in Y and X
     y = base_credito.iloc[15:, 0].copy().to_frame("credito_hogares")
@@ -20,14 +21,16 @@ def read_data():
                 "tasa_activa(t-2)", "credito_banco_pacifico_ecuador(t-3)",
                 "simulador_de_credito_ecuador(t-2)", "tasa_pasiva(t-2)",
                 "credito_quirografario_ecuador(t-2)", "prestamo_ecuador(t-1)",
-                "credito_ecuador(t-1)","precio_wti(t-1)","credito_banco_pichincha_ecuador(t-1)",
-                'prestamo_ecuador(t-2)','simulador_de_credito_ecuador(t-1)','simulador_de_credito_ecuador(t-3)']
-                # 'credito_quirografario_ecuador(t-3)','credito_quirografario_ecuador(t-1)']
-                # "prestamo_ecuador(t-2)", "credito_ecuador(t-1)", #eliminar desde aqui para volver a 2.12 mape
-                # "simulador_de_credito_ecuador(t-1)","credito_banco_pichincha_ecuador(t-1)"]
+                "credito_ecuador(t-1)", "precio_wti(t-1)", "credito_banco_pichincha_ecuador(t-1)",
+                'prestamo_ecuador(t-2)', 'simulador_de_credito_ecuador(t-1)', 'simulador_de_credito_ecuador(t-3)']
+    # 'credito_quirografario_ecuador(t-3)','credito_quirografario_ecuador(t-1)']
+    # "prestamo_ecuador(t-2)", "credito_ecuador(t-1)", #eliminar desde aqui para volver a 2.12 mape
+    # "simulador_de_credito_ecuador(t-1)","credito_banco_pichincha_ecuador(t-1)"]
     x = x.loc[:, ~x.columns.isin(omited_x)]
 
     # Expanding Window Statistics Features
+    # Commented due its lower power to predict the objective variable.
+
     # window_exp = y.expanding()
     # dataframe = concat([window_exp.min(), window_exp.mean(), window_exp.max()], axis=1)
     # dataframe = series_to_supervised(dataframe, 1)
@@ -35,6 +38,7 @@ def read_data():
     # y_ew = dataframe
 
     # Rolling Window Statistics Features (According to pacf anf acf window must be max 3
+    # Commented due its lower power to predict the objective variable.
     # width = 3
     # shifted = y.shift(width - 1)
     # window = shifted.rolling(window=width)
@@ -50,12 +54,14 @@ def read_data():
     x['year'] = [base_credito.index[i].year for i in range(len(x))]
     # x = pd.get_dummies(x, columns=["year", 'month'])
 
-    return pd.concat([y, x], axis=1)
+    return pd.concat([y, x], axis=1), base_credito[12:]
+
 
 class DataProcessing:
 
     def __init__(self):
-        self.df = read_data()
+        self.df, self.orig_df = read_data()
+
 
 def series_to_supervised(data, n_in=1, dropnan=True):
     """
@@ -86,5 +92,6 @@ def series_to_supervised(data, n_in=1, dropnan=True):
 
     # drop rows with NaN values
     if data.shape[1] > 15:
-        agg.dropna(subset=['credito_hogares(t-3)'],inplace=True)
+        agg.dropna(subset=['credito_hogares(t-3)'], inplace=True)
     return agg
+

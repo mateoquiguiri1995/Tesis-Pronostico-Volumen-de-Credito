@@ -10,6 +10,8 @@ from xgboost import plot_importance
 from xgboost import plot_tree
 from processing import *
 from models import *
+import missingno as msno
+from sklearn.ensemble import RandomForestRegressor
 
 base_hogares = pd.read_excel("data/base_hogares.xlsx")
 base_hogares['fecha'] = pd.to_datetime(base_hogares['fecha'], format='%Y-%m-%d').dt.date
@@ -45,8 +47,8 @@ x = pd.concat([x_train, x_test], axis=0)
 y = y_train.append(y_test)
 #
 param_grid = {
-    'n_estimators': [140,130,300],
-    'max_depth': [4,6],
+    'n_estimators': [140, 130, 300],
+    'max_depth': [4, 6],
     'min_child_weight': [10],
     'learning_rate': [0.3],
     'gamma': [20],
@@ -55,7 +57,7 @@ param_grid = {
     'colsample_bylevel': [0.7, 1],
     'colsample_bytree': [0.7, 1],
     'colsample_bynode': [0.7, 1],
-    'reg_alpha': [10,12],
+    'reg_alpha': [10, 12],
     'random_state': [28],
     'n_jobs': [-1]
 
@@ -125,13 +127,13 @@ np.random.seed(28)
 #
 # }
 
-fit_params={"early_stopping_rounds":10,
-            "eval_metric" : "mape",
-            "eval_set" : [[x_test, y_test]]}
+fit_params = {"early_stopping_rounds": 10,
+              "eval_metric": "mape",
+              "eval_set": [[x_test, y_test]]}
 
 optimal_params = GridSearchCV(
     estimator=xgb.XGBRegressor(objective='reg:squarederror',
-                                random_state=28),
+                               random_state=28),
     param_grid=param_grid,
     # fit_params=fit_params,
     scoring='neg_mean_absolute_percentage_error',
@@ -145,65 +147,132 @@ optimal_params.fit(x_train, y_train)
 optimal_params_df = pd.DataFrame(optimal_params.cv_results_)
 # optimal_params.best_params_
 
-# optimal_params_df.to_excel("gridsearch2.xlsx")
-
-#
-random.seed(28)
-np.random.seed(28)
-
-#Predictions
-
-reg = xgb.XGBRegressor(objective='reg:squarederror', colsample_bylevel=1, colsample_bytree=1,
-                                   colsample_bynode=1, gamma=20, learning_rate=0.3, max_depth=4,
-                                   min_child_weight=10, n_estimators=120, reg_alpha=12,
-                                   reg_lambda=5, subsample=1,  random_state=28, seed=28)
-
-reg.fit(x_train,
-        y_train,
-        verbose=2)
-
-y_hat = reg.predict(x_test)
-MAPE(y_test, y_hat)
-
-
-predictions = []
-besiter = []
-for t in range(-6, 0, 1):
-    x_train, x_test, y_train, y_test = x.iloc[:t, :], x.iloc[t:, :], y[:t], y[t:]
-    reg.fit(x_train,
-            y_train,
-            verbose=2,
-            early_stopping_rounds=20,
-            eval_set=[(x_train, y_train), (x_test.iloc[:1], y_test.iloc[:1])],
-            eval_metric=['rmse','mape']
-            )
-    y_hat = reg.predict(x_test.iloc[:1])
-
-    # predictions.append(y_hat)
-    predictions.append(y_hat)
-    besiter.append(reg.best_iteration)
-t = -12
-    # x_train, x_test, y_train, y_test = x_encoded.iloc[:t, :], x_encoded.iloc[t:, :], y[:t], y[t:]
-x_train, x_test, y_train, y_test = x.iloc[:t, :], x.iloc[t:, :], y[:t], y[t:]
-# x_train, x_test, y_train, y_test = xgboost.x_train.iloc[:t, :], xgboost.x_test.iloc[t:, :], xgboost.y_train[:t], xgboost.y_test[t:]
-
-# x_train, x_test, y_train, y_test = xgboost.x_train.iloc[:t, :], xgboost.x_test.iloc[t:, :], xgboost.y_train[:t], xgboost.y_test[t:]
-#
-
-mape_final = MAPE(y[-6:], predictions[6:])
-mape_final = MAPE(xgboost.y_test, predictions)
-
-MAPE(xgboost.y_test, xgboost.predictions)
-mape_final
-
-results = reg.evals_result()
-# Feature Importance
-ax = plot_importance(reg, height=0.5)
-fig = ax.figure
-fig.set_size_inches(60, 60)
-plt.show()
-print(reg.feature_importances_)
 
 optimal_params_df.to_excel("gridsearch3.xlsx")
 
 # xgboost.df.to_excel("base_hogar_hypertunning.xlsx")
+
+# -------------------------------------------------------------------------------
+# RANDOM FOREST TUNING
+# -------------------------------------------------------------------------------
+random_forest = RandomForestPredictor()
+x_train, x_test, y_train, y_test = random_forest.x_train, random_forest.x_test, random_forest.y_train, random_forest.y_test
+
+n_splits = 6
+tscv = TimeSeriesSplit(n_splits, test_size=1)
+
+n_estimators = [20, 50, 100, 200, 300]  # number of trees in the random forest
+max_features = ['0.2', '0.4', '0.8', '1', 'sqrt']  # number of features in consideration at every split
+max_depth = [int(x) for x in np.linspace(5, 50, num=10)]  # maximum number of levels allowed in each decision tree
+min_samples_split = [2, 6, 10]  # minimum sample number to split a node
+min_samples_leaf = [3, 5, 7]  # minimum sample number that can be stored in a leaf node
+bootstrap = [True, False]  # method used to sample data points
+max_leaf_nodes = [6, 10, 15]
+max_samples = [1]
+n_jobs = [-1]
+random_state = [28]
+
+grid = {'n_estimators': n_estimators,
+        'max_features': max_features,
+        'max_depth': max_depth,
+        'min_samples_split': min_samples_split,
+        'min_samples_leaf': min_samples_leaf,
+        'bootstrap': bootstrap,
+        'n_jobs': n_jobs,
+        'max_leaf_nodes': max_leaf_nodes,
+        'max_samples': max_samples,
+        'random_state': random_state
+        }
+
+optimal_params = GridSearchCV(
+    estimator=RandomForestRegressor(criterion='squared_error'),
+    param_grid=grid,
+    scoring='neg_mean_absolute_percentage_error',
+    verbose=2,
+    cv=tscv)
+
+optimal_params.fit(x_train, y_train)
+optimal_params_df = pd.DataFrame(optimal_params.cv_results_)
+model_b.df.to_excel("base_hogar_random_forest.xlsx")
+
+# -------------------------------------------------------------------------------
+# MISSING VALUES CHECK
+# -------------------------------------------------------------------------------
+
+model_b = BaselinePredictor()
+msno.bar(model_b.orig_df)
+plt.show()
+msno.matrix(model_b.orig_df)
+plt.show()
+msno.heatmap(model_b.orig_df)
+plt.show()
+
+# -------------------------------------------------------------------------------
+# AUTOARIMA CHECK
+# -------------------------------------------------------------------------------
+
+# ex = ["prestamo_ecuador(t-5)",
+#       'prestamo_ecuador(t-6)'
+#       'credito_ecuador(t-6)'
+#       "simulador_de_credito_ecuador(t-4)",
+#       "credito_quirografario_ecuador(t-2)",
+#       "prestamo_quirografario_ecuador(t-2)",
+#       "credito_banco_guayaquil_ecuador(t-6)",
+#       "credito_ecuador(t-5)",
+#       "prestamo_ecuador(t-6)",
+#       "inflacion(t-5)",
+#       "roe_sf(t-2)",
+#       "tasa_pasiva(t-1)",
+#       "tasa_pasiva(t-1)"]
+# for x in range(len(ex)):
+#     result = adfuller(arima.x_train.loc[:, ex[x]])
+#     plt.plot(arima.x_train.loc[:, ex[x]])
+#     plt.title(ex[x])
+#     plt.show()
+#     if result[1] > 0.01:
+#         result = adfuller(arima.x_train.loc[:, ex[x]].diff().dropna())
+#         plt.plot(arima.x_train.loc[:, ex[x]].diff().dropna())
+#         plt.title(ex[x])
+#         plt.show()
+#         print('diff')
+#     # result = adfuller(arima.x_train.iloc[:,0])
+#     # print('ADF Statistic: %f' % result[0])
+#     print(ex[x] + ' p-value: %f' % result[1])
+#     # print('Critical Values:')
+#
+#
+# model = pm.auto_arima(arima.y_train, start_p=0, start_q=0,
+#                       test='adf',  # use adftest to find optimal 'd'
+#                       max_p=2, max_q=2,  # maximum p and q
+#                       m=12,  # frequency of series
+#                       d=None,  # let model determine 'd'
+#                       seasonal=True,  # No Seasonality
+#                       start_P=0,
+#                       D=0,
+#                       trace=True,
+#                       error_action='ignore',
+#                       suppress_warnings=False,
+#                       stepwise=False)
+
+# -------------------------------------------------------------------------------
+# LASSO REGRESSION FEATURE SELECTION FOR ARIMAX
+# -------------------------------------------------------------------------------
+
+# from sklearn.linear_model import LassoCV, Lasso
+# #
+# laso_cv = TimeSeriesSplit(5, max_train_size=150, test_size=1)
+# pipeline = Pipeline([
+#                      ('scaler',StandardScaler()),
+#                      ('model',Lasso())
+# ])
+
+# search = GridSearchCV(pipeline,
+#                       {'model__alpha':np.arange(0.1,10,0.1)},
+#                       cv = laso_cv, scoring="neg_mean_squared_error",verbose=3
+#                       )
+# #
+# search.fit(arima.x_train.fillna(value=30), arima.y_train)
+# search.best_params_
+# coefficients = search.best_estimator_.named_steps['model'].coef_
+# importance = np.abs(coefficients)
+# np.array(importance)[importance > 0]
